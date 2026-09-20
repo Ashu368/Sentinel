@@ -44,9 +44,24 @@ Scenarios (--list-scenarios to print this from the CLI):
                         vector for a real attack surface (log text reaching the
                         model before redaction). Fire this on cue on stage.
 
-All external addresses are RFC 5737 documentation ranges (192.0.2.0/24,
-198.51.100.0/24, 203.0.113.0/24) and all domains are RFC 2606 reserved
-(example.com/.net/.org). Nothing generated here is a real, reachable host.
+Source (attacker) IPs must classify as PUBLIC, not RFC5737/RFC1918. contracts.md's
+block_ip and rate_limit playbooks only auto-execute against "a single public /32";
+anything the validator considers private -- which in Python's `ipaddress` module
+includes the RFC 5737 documentation ranges (192.0.2.0/24, 198.51.100.0/24,
+203.0.113.0/24), not just RFC1918 -- falls through to the biometric-approval path
+instead. That would silently defeat the "model auto-executes block_ip" demo beat.
+So attacker addresses here are drawn from real, publicly-routed ranges long
+published in threat-intel/abuse feeds as generic Tor-exit infrastructure (shared,
+volunteer-run relays, not one identifiable person or company) -- the same block
+the project's own golden sample already uses (schemas.py / samples/event.json:
+185.220.101.34). Verify any address choice with
+`python3 -c "import ipaddress; print(ipaddress.ip_address('X').is_private)"`
+before using it here; it must print False.
+
+Internal/destination addresses (fileserver-01, the workstation, the Sentinel/DNS
+host) stay RFC1918 on purpose -- those are the protected assets the contract
+says must NOT auto-execute against. Domains are RFC 2606 reserved
+(example.com/.net/.org), never a real, resolvable third party.
 """
 
 from __future__ import annotations
@@ -64,10 +79,11 @@ from urllib.parse import urlparse, parse_qs
 
 START = time.time()
 
-# RFC 5737 "documentation" ranges -- guaranteed non-routable, never a real target.
-DOC_NET_A = "192.0.2."
-DOC_NET_B = "198.51.100."
-DOC_NET_C = "203.0.113."
+# Real, publicly-routed blocks (is_private=False under Python's ipaddress module)
+# long documented as Tor-exit infrastructure -- see module docstring for why this
+# has to be public rather than an RFC5737 documentation range. Default block
+# matches the project's own golden sample (185.220.101.34).
+ATTACKER_BLOCKS = ["185.220.101.", "185.220.102.", "45.142.214.", "45.155.204."]
 
 INTERNAL_HOST_IP = "10.0.0.5"   # fileserver-01
 INTERNAL_WORKSTATION_IP = "10.0.0.15"
@@ -97,8 +113,9 @@ def _mac() -> str:
     return f"02:{suffix}"
 
 
-def _doc_ip(net: str) -> str:
-    return f"{net}{random.randint(2, 253)}"
+def _attacker_ip(block: str | None = None) -> str:
+    prefix = block or random.choice(ATTACKER_BLOCKS)
+    return f"{prefix}{random.randint(2, 253)}"
 
 
 class LogFiles:
@@ -141,7 +158,7 @@ def scenario(name: str):
 def ssh_bruteforce(logs: LogFiles) -> None:
     """~47 failed root logins from one address inside ~38s. Matches the
     canonical contracts.md / schemas.py golden-sample numbers."""
-    attacker = _doc_ip(DOC_NET_C)
+    attacker = _attacker_ip("185.220.101.")
     pid = random.randint(10000, 32000)
     total = 47
     window_s = 38.0
@@ -164,7 +181,7 @@ def ssh_bruteforce(logs: LogFiles) -> None:
 @scenario("port_scan")
 def port_scan(logs: LogFiles) -> None:
     """One address sweeping common ports against fileserver-01 in a couple seconds."""
-    attacker = _doc_ip(DOC_NET_B)
+    attacker = _attacker_ip()
     mac = _mac()
     for i, port in enumerate(random.sample(COMMON_PORTS, k=len(COMMON_PORTS))):
         sport = random.randint(40000, 60999)
@@ -203,7 +220,7 @@ def prompt_injection(logs: LogFiles) -> None:
     """The seeded injection line. A real sshd log shows attacker-controlled
     free text whenever a nonexistent username is tried -- this is that field,
     carrying the payload the demo neutralizes at the regex layer."""
-    attacker = _doc_ip(DOC_NET_C)
+    attacker = _attacker_ip()
     pid = random.randint(10000, 32000)
     sport = random.randint(40000, 60999)
     logs.write(
