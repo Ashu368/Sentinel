@@ -36,6 +36,11 @@ Scenarios (--list-scenarios to print this from the CLI):
                         matching the canonical example in contracts.md / schemas.py
     port_scan          one address sweeping ~14 common ports against one host
                         inside a couple of seconds
+    correlation_burst  3 distinct public addresses hitting the same host inside
+                        ~20s -- the raw-log analog of the "correlation" escalation
+                        gate, the best candidate for the destructive/biometric
+                        demo beat (verify against the real backend which action
+                        it actually resolves to; that part isn't ours to force)
     pihole_block       a workstation repeatedly queries a malware-looking domain,
                         gravity blocks every one of them
     prompt_injection   an sshd failed-login line whose ATTEMPTED USERNAME is the
@@ -196,6 +201,32 @@ def port_scan(logs: LogFiles) -> None:
         time.sleep(random.uniform(0.1, 0.3))
 
 
+@scenario("correlation_burst")
+def correlation_burst(logs: LogFiles) -> None:
+    """3 distinct public addresses hitting fileserver-01 inside one ~20s
+    window -- the raw-log analog of contracts.md's "correlation" escalation
+    gate ("3+ distinct sources inside one window"). This is the demo's best
+    candidate for the destructive-action/biometric beat, but which playbook
+    the model actually picks for a correlated, escalated event is a runtime
+    decision (Ollama + the Claude escalation tier), not something a raw log
+    can force deterministically. Rehearse this one against the real backend
+    before demo day and coordinate with Shan if it doesn't land on an
+    approval-required action."""
+    attackers = random.sample(
+        [f"{block}{random.randint(2, 253)}" for block in ATTACKER_BLOCKS], k=3
+    )
+    end = time.time() + 20.0
+    while time.time() < end:
+        attacker = random.choice(attackers)
+        sport = random.randint(40000, 60999)
+        logs.write(
+            "auth",
+            f"{_now()} fileserver-01 sshd[{random.randint(10000, 32000)}]: "
+            f"Failed password for root from {attacker} port {sport} ssh2",
+        )
+        time.sleep(random.uniform(0.5, 1.5))
+
+
 @scenario("pihole_block")
 def pihole_block(logs: LogFiles) -> None:
     """A workstation repeatedly beacons to a malware-looking domain; every
@@ -230,7 +261,7 @@ def prompt_injection(logs: LogFiles) -> None:
     )
 
 
-SCRIPT_ORDER = ["ssh_bruteforce", "port_scan", "pihole_block", "prompt_injection"]
+SCRIPT_ORDER = ["ssh_bruteforce", "port_scan", "correlation_burst", "pihole_block", "prompt_injection"]
 assert set(SCRIPT_ORDER) == set(SCENARIOS)
 
 

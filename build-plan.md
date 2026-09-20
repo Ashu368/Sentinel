@@ -264,10 +264,10 @@ Phase 5 is graded and gets squeezed by the deadline. Start the README at hour 0,
 
 ### Phase 5 — Deliverables (graded, hard cutoff 3:00 PM Sunday)
 
-- [ ] Draft README with all four required sections
-- [ ] Rehearse the demo sequence end to end, twice
-- [ ] Record pre-recorded audio clips as venue-wifi fallback
-- [ ] Film the presentation video, under 3 minutes
+- [x] Draft README with all four required sections — `README.md`
+- [ ] Rehearse the demo sequence end to end, twice — script ready at `docs/demo-script.md`, rehearsal itself still needed
+- [ ] Record pre-recorded audio clips as venue-wifi fallback — lines scripted at `docs/fallback-audio.md`, recording itself still needed
+- [ ] Film the presentation video, under 3 minutes — shot list ready at `docs/video-script.md`, filming itself still needed
 - [ ] Push the prototype somewhere linkable
 - [ ] Submit the Google Form
 
