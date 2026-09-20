@@ -1,0 +1,1542 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel.local/contract.json",
+  "title": "SentinelFrame",
+  "description": "Sentinel WebSocket envelope. Discriminate on `type`. Server->client: event, heartbeat, audio_ready, action_update, hello. Client->server: ack, approve_action, resync. $defs.OllamaOutput is the local-model JSON shape (not a frame).",
+  "x-sentinel": {
+    "contract_version": "1.0.0",
+    "protocol_version": 1,
+    "server_frame_types": [
+      "event",
+      "heartbeat",
+      "audio_ready",
+      "action_update",
+      "hello"
+    ],
+    "client_frame_types": [
+      "ack",
+      "approve_action",
+      "resync"
+    ],
+    "resync_buffer_max": 200,
+    "tts_max_words": 20,
+    "tts_max_chars": 140,
+    "caps": {
+      "block_ip": {
+        "min_prefixlen": 24,
+        "auto_max_addresses": 1,
+        "auto_public_only": true,
+        "auto_max_duration_sec": 3600,
+        "approved_max_duration_sec": 86400,
+        "reversible": true
+      },
+      "rate_limit": {
+        "min_prefixlen": 24,
+        "auto_max_addresses": 1,
+        "auto_max_duration_sec": 1800,
+        "approved_max_duration_sec": 7200,
+        "min_limit_conn_per_min": 10,
+        "reversible": true
+      },
+      "isolate_host": {
+        "max_hosts": 1,
+        "max_duration_sec": 3600,
+        "requires_approval": true,
+        "reversible": true
+      },
+      "watch": {
+        "max_duration_sec": 86400,
+        "requires_approval": false,
+        "read_only": true
+      },
+      "notify_only": {
+        "requires_approval": false,
+        "read_only": true,
+        "free_text_allowed": false
+      },
+      "revoke_session": {
+        "requires_approval": true,
+        "reversible": false
+      },
+      "snapshot_evidence": {
+        "max_window_sec": 3600,
+        "requires_approval": false,
+        "read_only": true
+      }
+    },
+    "protected_assets": [
+      "10.0.0.1",
+      "10.0.0.10",
+      "10.0.0.53",
+      "127.0.0.0/8",
+      "192.168.1.1",
+      "::1",
+      "dc01",
+      "dns01",
+      "gw01",
+      "nas01",
+      "sentinel-server"
+    ]
+  },
+  "$defs": {
+    "AckData": {
+      "additionalProperties": false,
+      "properties": {
+        "seq": {
+          "description": "seq of the frame being acknowledged",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "event_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Id"
+        }
+      },
+      "required": [
+        "seq"
+      ],
+      "title": "AckData",
+      "type": "object"
+    },
+    "AckFrame": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "type": {
+          "const": "ack",
+          "default": "ack",
+          "title": "Type",
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "ts": {
+          "description": "RFC3339 UTC with millisecond precision, always ends in Z",
+          "examples": [
+            "2026-09-19T12:00:00.000Z"
+          ],
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "title": "Ts",
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/AckData"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "AckFrame",
+      "type": "object"
+    },
+    "ActionRef": {
+      "additionalProperties": false,
+      "properties": {
+        "playbook": {
+          "enum": [
+            "block_ip",
+            "rate_limit",
+            "isolate_host",
+            "watch",
+            "notify_only",
+            "revoke_session",
+            "snapshot_evidence"
+          ],
+          "title": "Playbook",
+          "type": "string"
+        },
+        "params": {
+          "discriminator": {
+            "mapping": {
+              "block_ip": "#/$defs/BlockIpParams",
+              "isolate_host": "#/$defs/IsolateHostParams",
+              "notify_only": "#/$defs/NotifyOnlyParams",
+              "rate_limit": "#/$defs/RateLimitParams",
+              "revoke_session": "#/$defs/RevokeSessionParams",
+              "snapshot_evidence": "#/$defs/SnapshotEvidenceParams",
+              "watch": "#/$defs/WatchParams"
+            },
+            "propertyName": "playbook"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/BlockIpParams"
+            },
+            {
+              "$ref": "#/$defs/RateLimitParams"
+            },
+            {
+              "$ref": "#/$defs/IsolateHostParams"
+            },
+            {
+              "$ref": "#/$defs/WatchParams"
+            },
+            {
+              "$ref": "#/$defs/NotifyOnlyParams"
+            },
+            {
+              "$ref": "#/$defs/RevokeSessionParams"
+            },
+            {
+              "$ref": "#/$defs/SnapshotEvidenceParams"
+            }
+          ],
+          "title": "Params"
+        },
+        "status": {
+          "enum": [
+            "auto_executed",
+            "pending_approval",
+            "approved",
+            "denied",
+            "expired",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "requires_approval": {
+          "title": "Requires Approval",
+          "type": "boolean"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "description": "RFC3339 UTC with millisecond precision, always ends in Z",
+              "examples": [
+                "2026-09-19T12:00:00.000Z"
+              ],
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "approval_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approval Id"
+        }
+      },
+      "required": [
+        "playbook",
+        "params",
+        "status",
+        "requires_approval"
+      ],
+      "title": "ActionRef",
+      "type": "object"
+    },
+    "ActionUpdateData": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "format": "uuid",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "playbook": {
+          "enum": [
+            "block_ip",
+            "rate_limit",
+            "isolate_host",
+            "watch",
+            "notify_only",
+            "revoke_session",
+            "snapshot_evidence"
+          ],
+          "title": "Playbook",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "auto_executed",
+            "pending_approval",
+            "approved",
+            "denied",
+            "expired",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "approval_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approval Id"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "description": "RFC3339 UTC with millisecond precision, always ends in Z",
+              "examples": [
+                "2026-09-19T12:00:00.000Z"
+              ],
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "event_id",
+        "playbook",
+        "status"
+      ],
+      "title": "ActionUpdateData",
+      "type": "object"
+    },
+    "ActionUpdateFrame": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "type": {
+          "const": "action_update",
+          "default": "action_update",
+          "title": "Type",
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "ts": {
+          "description": "RFC3339 UTC with millisecond precision, always ends in Z",
+          "examples": [
+            "2026-09-19T12:00:00.000Z"
+          ],
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "title": "Ts",
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/ActionUpdateData"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "ActionUpdateFrame",
+      "type": "object"
+    },
+    "ApproveActionData": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "event_id": {
+          "format": "uuid",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "approved",
+            "denied"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "biometric": {
+          "description": "true only after AndroidX Biometric succeeded",
+          "title": "Biometric",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "approval_id",
+        "event_id",
+        "decision",
+        "biometric"
+      ],
+      "title": "ApproveActionData",
+      "type": "object"
+    },
+    "ApproveActionFrame": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "type": {
+          "const": "approve_action",
+          "default": "approve_action",
+          "title": "Type",
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "ts": {
+          "description": "RFC3339 UTC with millisecond precision, always ends in Z",
+          "examples": [
+            "2026-09-19T12:00:00.000Z"
+          ],
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "title": "Ts",
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/ApproveActionData"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "ApproveActionFrame",
+      "type": "object"
+    },
+    "AudioReadyData": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "format": "uuid",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "audio": {
+          "$ref": "#/$defs/AudioRef"
+        }
+      },
+      "required": [
+        "event_id",
+        "audio"
+      ],
+      "title": "AudioReadyData",
+      "type": "object"
+    },
+    "AudioReadyFrame": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "type": {
+          "const": "audio_ready",
+          "default": "audio_ready",
+          "title": "Type",
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "ts": {
+          "description": "RFC3339 UTC with millisecond precision, always ends in Z",
+          "examples": [
+            "2026-09-19T12:00:00.000Z"
+          ],
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "title": "Ts",
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/AudioReadyData"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "AudioReadyFrame",
+      "type": "object"
+    },
+    "AudioRef": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "ready",
+            "pending",
+            "failed",
+            "suppressed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "audio_id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Audio Id",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "mime": {
+          "anyOf": [
+            {
+              "const": "audio/mpeg",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mime"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha256"
+        },
+        "cache_key": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cache Key"
+        }
+      },
+      "required": [
+        "status",
+        "audio_id"
+      ],
+      "title": "AudioRef",
+      "type": "object"
+    },
+    "BlockIpParams": {
+      "additionalProperties": false,
+      "properties": {
+        "playbook": {
+          "const": "block_ip",
+          "default": "block_ip",
+          "title": "Playbook",
+          "type": "string"
+        },
+        "target": {
+          "format": "ipvanynetwork",
+          "title": "Target",
+          "type": "string"
+        },
+        "duration_sec": {
+          "exclusiveMinimum": 0,
+          "title": "Duration Sec",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "target",
+        "duration_sec"
+      ],
+      "title": "BlockIpParams",
+      "type": "object"
+    },
+    "Entities": {
+      "additionalProperties": false,
+      "properties": {
+        "src_ips": {
+          "items": {
+            "format": "ipvanyaddress",
+            "type": "string"
+          },
+          "title": "Src Ips",
+          "type": "array"
+        },
+        "dst_hosts": {
+          "items": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "title": "Dst Hosts",
+          "type": "array"
+        },
+        "users": {
+          "items": {
+            "pattern": "^[A-Za-z0-9._@-]{1,128}$",
+            "type": "string"
+          },
+          "title": "Users",
+          "type": "array"
+        },
+        "ports": {
+          "items": {
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Ports",
+          "type": "array"
+        }
+      },
+      "title": "Entities",
+      "type": "object"
+    },
+    "Escalation": {
+      "additionalProperties": false,
+      "properties": {
+        "escalated": {
+          "title": "Escalated",
+          "type": "boolean"
+        },
+        "gate": {
+          "anyOf": [
+            {
+              "enum": [
+                "unknown_pattern",
+                "novelty",
+                "correlation",
+                "schema_failure",
+                "blast_radius",
+                "severity_floor",
+                "low_confidence",
+                "model_self_report"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gate"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "state": {
+          "default": "none",
+          "enum": [
+            "none",
+            "pending",
+            "answered",
+            "unreachable"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "verdict": {
+          "anyOf": [
+            {
+              "maxLength": 600,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verdict"
+        }
+      },
+      "required": [
+        "escalated"
+      ],
+      "title": "Escalation",
+      "type": "object"
+    },
+    "EventData": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "format": "uuid",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "signature": {
+          "description": "stable pattern key, e.g. ssh.bruteforce",
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Signature",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "low",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 60,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "internal_log": {
+          "maxLength": 600,
+          "minLength": 1,
+          "title": "Internal Log",
+          "type": "string"
+        },
+        "tts_summary": {
+          "maxLength": 140,
+          "minLength": 1,
+          "title": "Tts Summary",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "entities": {
+          "$ref": "#/$defs/Entities"
+        },
+        "source": {
+          "$ref": "#/$defs/Source"
+        },
+        "window": {
+          "$ref": "#/$defs/Window"
+        },
+        "audio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AudioRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "escalation": {
+          "$ref": "#/$defs/Escalation"
+        },
+        "action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ActionRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reviewed": {
+          "default": false,
+          "title": "Reviewed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "signature",
+        "severity",
+        "title",
+        "internal_log",
+        "tts_summary",
+        "confidence",
+        "source",
+        "window"
+      ],
+      "title": "EventData",
+      "type": "object"
+    },
+    "EventFrame": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "type": {
+          "const": "event",
+          "default": "event",
+          "title": "Type",
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "ts": {
+          "description": "RFC3339 UTC with millisecond precision, always ends in Z",
+          "examples": [
+            "2026-09-19T12:00:00.000Z"
+          ],
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "title": "Ts",
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/EventData"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "EventFrame",
+      "type": "object"
+    },
+    "HeartbeatData": {
+      "additionalProperties": false,
+      "properties": {
+        "interval_s": {
+          "exclusiveMinimum": 0,
+          "title": "Interval S",
+          "type": "integer"
+        },
+        "uptime_s": {
+          "minimum": 0,
+          "title": "Uptime S",
+          "type": "integer"
+        },
+        "last_event_seq": {
+          "minimum": 0,
+          "title": "Last Event Seq",
+          "type": "integer"
+        },
+        "queue_depth": {
+          "minimum": 0,
+          "title": "Queue Depth",
+          "type": "integer"
+        },
+        "pipeline": {
+          "$ref": "#/$defs/PipelineStatus"
+        }
+      },
+      "required": [
+        "interval_s",
+        "uptime_s",
+        "last_event_seq",
+        "queue_depth",
+        "pipeline"
+      ],
+      "title": "HeartbeatData",
+      "type": "object"
+    },
+    "HeartbeatFrame": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "type": {
+          "const": "heartbeat",
+          "default": "heartbeat",
+          "title": "Type",
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "ts": {
+          "description": "RFC3339 UTC with millisecond precision, always ends in Z",
+          "examples": [
+            "2026-09-19T12:00:00.000Z"
+          ],
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "title": "Ts",
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/HeartbeatData"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "HeartbeatFrame",
+      "type": "object"
+    },
+    "HelloData": {
+      "additionalProperties": false,
+      "properties": {
+        "server_id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Server Id",
+          "type": "string"
+        },
+        "contract_version": {
+          "default": "1.0.0",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "heartbeat_interval_s": {
+          "exclusiveMinimum": 0,
+          "title": "Heartbeat Interval S",
+          "type": "integer"
+        },
+        "last_event_seq": {
+          "minimum": 0,
+          "title": "Last Event Seq",
+          "type": "integer"
+        },
+        "resync_buffer_max": {
+          "default": 200,
+          "title": "Resync Buffer Max",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "server_id",
+        "heartbeat_interval_s",
+        "last_event_seq"
+      ],
+      "title": "HelloData",
+      "type": "object"
+    },
+    "HelloFrame": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "type": {
+          "const": "hello",
+          "default": "hello",
+          "title": "Type",
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "ts": {
+          "description": "RFC3339 UTC with millisecond precision, always ends in Z",
+          "examples": [
+            "2026-09-19T12:00:00.000Z"
+          ],
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "title": "Ts",
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/HelloData"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "HelloFrame",
+      "type": "object"
+    },
+    "IsolateHostParams": {
+      "additionalProperties": false,
+      "properties": {
+        "playbook": {
+          "const": "isolate_host",
+          "default": "isolate_host",
+          "title": "Playbook",
+          "type": "string"
+        },
+        "host_id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Host Id",
+          "type": "string"
+        },
+        "duration_sec": {
+          "exclusiveMinimum": 0,
+          "title": "Duration Sec",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "host_id",
+        "duration_sec"
+      ],
+      "title": "IsolateHostParams",
+      "type": "object"
+    },
+    "NotifyOnlyParams": {
+      "additionalProperties": false,
+      "description": "No free-text field by design: the model cannot smuggle prose into the app.",
+      "properties": {
+        "playbook": {
+          "const": "notify_only",
+          "default": "notify_only",
+          "title": "Playbook",
+          "type": "string"
+        },
+        "channel": {
+          "default": "app",
+          "enum": [
+            "app",
+            "digest"
+          ],
+          "title": "Channel",
+          "type": "string"
+        }
+      },
+      "title": "NotifyOnlyParams",
+      "type": "object"
+    },
+    "PipelineStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "log_source": {
+          "default": "ok",
+          "enum": [
+            "ok",
+            "degraded",
+            "unreachable"
+          ],
+          "title": "Log Source",
+          "type": "string"
+        },
+        "ollama": {
+          "default": "ok",
+          "enum": [
+            "ok",
+            "degraded",
+            "unreachable"
+          ],
+          "title": "Ollama",
+          "type": "string"
+        },
+        "tts": {
+          "default": "ok",
+          "enum": [
+            "ok",
+            "degraded",
+            "unreachable"
+          ],
+          "title": "Tts",
+          "type": "string"
+        },
+        "claude": {
+          "default": "ok",
+          "enum": [
+            "ok",
+            "degraded",
+            "unreachable"
+          ],
+          "title": "Claude",
+          "type": "string"
+        }
+      },
+      "title": "PipelineStatus",
+      "type": "object"
+    },
+    "RateLimitParams": {
+      "additionalProperties": false,
+      "properties": {
+        "playbook": {
+          "const": "rate_limit",
+          "default": "rate_limit",
+          "title": "Playbook",
+          "type": "string"
+        },
+        "target": {
+          "format": "ipvanynetwork",
+          "title": "Target",
+          "type": "string"
+        },
+        "limit_conn_per_min": {
+          "title": "Limit Conn Per Min",
+          "type": "integer"
+        },
+        "duration_sec": {
+          "exclusiveMinimum": 0,
+          "title": "Duration Sec",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "target",
+        "limit_conn_per_min",
+        "duration_sec"
+      ],
+      "title": "RateLimitParams",
+      "type": "object"
+    },
+    "ResyncData": {
+      "additionalProperties": false,
+      "properties": {
+        "since_seq": {
+          "description": "last seq the client saw; 0 = everything buffered",
+          "minimum": 0,
+          "title": "Since Seq",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "since_seq"
+      ],
+      "title": "ResyncData",
+      "type": "object"
+    },
+    "ResyncFrame": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "type": {
+          "const": "resync",
+          "default": "resync",
+          "title": "Type",
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "ts": {
+          "description": "RFC3339 UTC with millisecond precision, always ends in Z",
+          "examples": [
+            "2026-09-19T12:00:00.000Z"
+          ],
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "title": "Ts",
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/ResyncData"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "ResyncFrame",
+      "type": "object"
+    },
+    "RevokeSessionParams": {
+      "additionalProperties": false,
+      "properties": {
+        "playbook": {
+          "const": "revoke_session",
+          "default": "revoke_session",
+          "title": "Playbook",
+          "type": "string"
+        },
+        "user": {
+          "pattern": "^[A-Za-z0-9._@-]{1,128}$",
+          "title": "User",
+          "type": "string"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Id"
+        }
+      },
+      "required": [
+        "user"
+      ],
+      "title": "RevokeSessionParams",
+      "type": "object"
+    },
+    "SnapshotEvidenceParams": {
+      "additionalProperties": false,
+      "description": "Read-only: copies the relevant log window aside for later review.",
+      "properties": {
+        "playbook": {
+          "const": "snapshot_evidence",
+          "default": "snapshot_evidence",
+          "title": "Playbook",
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "host",
+            "network",
+            "auth"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "target": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Target",
+          "type": "string"
+        },
+        "window_sec": {
+          "exclusiveMinimum": 0,
+          "title": "Window Sec",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "scope",
+        "target",
+        "window_sec"
+      ],
+      "title": "SnapshotEvidenceParams",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "examples": [
+            "auth",
+            "firewall",
+            "dns",
+            "proxy"
+          ],
+          "maxLength": 32,
+          "title": "Kind",
+          "type": "string"
+        },
+        "collector": {
+          "examples": [
+            "sshd",
+            "pfsense",
+            "unbound"
+          ],
+          "maxLength": 64,
+          "title": "Collector",
+          "type": "string"
+        },
+        "raw_count": {
+          "description": "raw log lines collapsed into this event",
+          "minimum": 1,
+          "title": "Raw Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "collector",
+        "raw_count"
+      ],
+      "title": "Source",
+      "type": "object"
+    },
+    "WatchParams": {
+      "additionalProperties": false,
+      "description": "Read-only. Adds a target to the hot list so future events correlate faster.",
+      "properties": {
+        "playbook": {
+          "const": "watch",
+          "default": "watch",
+          "title": "Playbook",
+          "type": "string"
+        },
+        "target": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "title": "Target",
+          "type": "string"
+        },
+        "duration_sec": {
+          "exclusiveMinimum": 0,
+          "title": "Duration Sec",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "target",
+        "duration_sec"
+      ],
+      "title": "WatchParams",
+      "type": "object"
+    },
+    "Window": {
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "description": "RFC3339 UTC with millisecond precision, always ends in Z",
+          "examples": [
+            "2026-09-19T12:00:00.000Z"
+          ],
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "description": "RFC3339 UTC with millisecond precision, always ends in Z",
+          "examples": [
+            "2026-09-19T12:00:00.000Z"
+          ],
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "title": "End",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "Window",
+      "type": "object"
+    },
+    "OllamaOutput": {
+      "additionalProperties": false,
+      "description": "Exact JSON shape the local model must return (format=\"json\").\n\nValidate with  OllamaOutput.model_validate(obj, context={\"tokens\": token_set})\nso the tts_summary check can reject redaction tokens (HOST_A, USER_1, ...).\naction_params carries *tokens*, not real values; Python resolves them and\nthen runs validate_and_classify() on the resolved dict.",
+      "properties": {
+        "internal_log": {
+          "maxLength": 600,
+          "minLength": 1,
+          "title": "Internal Log",
+          "type": "string"
+        },
+        "tts_summary": {
+          "maxLength": 140,
+          "minLength": 1,
+          "title": "Tts Summary",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "low",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "escalate": {
+          "title": "Escalate",
+          "type": "boolean"
+        },
+        "escalate_reason": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Escalate Reason"
+        },
+        "action": {
+          "enum": [
+            "block_ip",
+            "rate_limit",
+            "isolate_host",
+            "watch",
+            "notify_only",
+            "revoke_session",
+            "snapshot_evidence"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "action_params": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "title": "Action Params",
+          "type": "object"
+        }
+      },
+      "required": [
+        "internal_log",
+        "tts_summary",
+        "severity",
+        "confidence",
+        "escalate",
+        "action"
+      ],
+      "title": "OllamaOutput",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "ack": "#/$defs/AckFrame",
+      "action_update": "#/$defs/ActionUpdateFrame",
+      "approve_action": "#/$defs/ApproveActionFrame",
+      "audio_ready": "#/$defs/AudioReadyFrame",
+      "event": "#/$defs/EventFrame",
+      "heartbeat": "#/$defs/HeartbeatFrame",
+      "hello": "#/$defs/HelloFrame",
+      "resync": "#/$defs/ResyncFrame"
+    },
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/EventFrame"
+    },
+    {
+      "$ref": "#/$defs/HeartbeatFrame"
+    },
+    {
+      "$ref": "#/$defs/AudioReadyFrame"
+    },
+    {
+      "$ref": "#/$defs/ActionUpdateFrame"
+    },
+    {
+      "$ref": "#/$defs/HelloFrame"
+    },
+    {
+      "$ref": "#/$defs/AckFrame"
+    },
+    {
+      "$ref": "#/$defs/ApproveActionFrame"
+    },
+    {
+      "$ref": "#/$defs/ResyncFrame"
+    }
+  ]
+}
